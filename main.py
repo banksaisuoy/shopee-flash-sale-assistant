@@ -1,32 +1,31 @@
 """
-Shopee Flash Sale Assistant - ULTIMATE EDITION (v3.0)
+Shopee Flash Sale Assistant - v3 Final (The Perfect Edition)
 ======================================================
-รวมฟีเจอร์ที่ดีที่สุดจากทุกเวอร์ชัน:
-  - Stealth Mode: ซ่อนการตรวจจับบอทด้วย selenium-stealth
-  - Multi-OS Alert: เสียงเตือนรองรับ Windows, macOS, Linux
-  - Precision Polling: วนลูปกดปุ่มรัวๆ ในระดับมิลลิวินาที (เร็วกว่า Refresh)
-  - Auto-Dependency: ตรวจสอบและติดตั้ง Library ที่จำเป็นให้อัตโนมัติ
-  - Smart Variant: ระบบเลือกตัวเลือกสินค้าที่เสถียรและแม่นยำ
-
-Requirements:
-    pip install selenium webdriver-manager selenium-stealth
+แก้ไข Bug จาก v3:
+  - Fixed Dependency Check: ตรวจสอบ webdriver_manager ถูกต้อง
+  - Smart Variant Locking: เลือกตัวเลือกก่อนเริ่มรัวปุ่ม ป้องกันการ Toggle off
+  - Captcha Interruption: หยุดรอเมื่อติด Captcha และแจ้งเตือนผู้ใช้
+  - Robust Error Handling: ปรับปรุงการจัดการ Exception เพื่อการ Debug
 """
 
 import time
 import sys
 import platform
 import subprocess
+import importlib.util
 from datetime import datetime, timedelta
 
-# --- Auto Dependency Check ---
+# --- Improved Dependency Check ---
 def install_dependencies():
-    required = ["selenium", "webdriver-manager", "selenium-stealth"]
-    for lib in required:
-        try:
-            __import__(lib.replace("-", "_"))
-        except ImportError:
-            print(f"📦 กำลังติดตั้ง {lib}...")
-            subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
+    libs = {
+        "selenium": "selenium",
+        "webdriver_manager": "webdriver-manager",
+        "selenium_stealth": "selenium-stealth"
+    }
+    for module_name, package_name in libs.items():
+        if importlib.util.find_spec(module_name) is None:
+            print(f"📦 กำลังติดตั้ง {package_name}...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", package_name])
 
 install_dependencies()
 
@@ -59,16 +58,9 @@ SELECTORS = {
     "captcha": [
         "//*[contains(@class,'captcha') or contains(@class,'slider')]",
         "//*[contains(text(),'Verify') or contains(text(),'ยืนยัน') or contains(text(),'เลื่อน')]",
-    ],
-    "checkout": [
-        "//button[contains(.,'ชำระเงิน') or contains(.,'Checkout')]",
-        "//div[contains(@class,'cart-page-footer__checkout')]//button",
     ]
 }
 
-# ============================================================
-#  Universal Sound Alert
-# ============================================================
 def alert_beep(times: int = 3):
     os_name = platform.system()
     try:
@@ -77,18 +69,12 @@ def alert_beep(times: int = 3):
             for _ in range(times):
                 winsound.Beep(1200, 300)
                 time.sleep(0.1)
-        elif os_name == "Darwin":
-            for _ in range(times):
-                subprocess.run(["afplay", "/System/Library/Sounds/Glass.aiff"], capture_output=True)
         else:
             print("\a" * times)
-    except:
+    except Exception:
         print("\n🚨 ALERT! (Check Browser)")
 
-# ============================================================
-#  Main Bot Class
-# ============================================================
-class ShopeeUltimateBot:
+class ShopeeFinalBot:
     def __init__(self, url: str, variants: list = None, fs_time: str = ""):
         self.url = url
         self.variants = variants if variants else []
@@ -115,38 +101,50 @@ class ShopeeUltimateBot:
         return driver
 
     def login(self):
-        print("\n🔑 Step 1: กรุณาล็อกอิน Shopee ให้เรียบร้อย (มีเวลา 5 นาที)")
+        print("\n🔑 Step 1: ล็อกอิน Shopee (5 นาที)")
         self.driver.get("https://shopee.co.th/buyer/login")
-        wait = WebDriverWait(self.driver, 300)
-        wait.until(lambda d: "login" not in d.current_url)
-        print("✅ ล็อกอินสำเร็จ!")
+        try:
+            WebDriverWait(self.driver, 300).until(lambda d: "login" not in d.current_url)
+            print("✅ ล็อกอินสำเร็จ!")
+        except TimeoutException:
+            print("❌ หมดเวลาล็อกอิน")
+            sys.exit()
 
-    def _check_captcha(self):
-        for xpath in SELECTORS["captcha"]:
-            try:
-                el = self.driver.find_element(By.XPATH, xpath)
-                if el.is_displayed():
-                    print("\n🚨 ติด CAPTCHA! รีบแก้ด่วน!")
-                    alert_beep(5)
-                    return True
-            except: pass
-        return False
+    def _wait_until_captcha_gone(self):
+        print("\n🚨 ติด CAPTCHA! กรุณาแก้ในเบราว์เซอร์...")
+        alert_beep(5)
+        while True:
+            is_captcha = False
+            for xpath in SELECTORS["captcha"]:
+                try:
+                    if self.driver.find_element(By.XPATH, xpath).is_displayed():
+                        is_captcha = True
+                        break
+                except Exception: pass
+            if not is_captcha:
+                print("✅ CAPTCHA หายไปแล้ว ทำงานต่อ...")
+                break
+            time.sleep(1)
 
     def _click_smart(self, xpaths, label):
         for xpath in xpaths:
             try:
                 el = self.driver.find_element(By.XPATH, xpath)
                 if el.is_enabled():
-                    self.driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
                     try: el.click()
                     except: self.driver.execute_script("arguments[0].click();", el)
                     print(f"✅ คลิก {label} สำเร็จ")
                     return True
-            except: continue
+            except Exception: continue
         return False
 
+    def _select_variants(self):
+        for v in self.variants:
+            xpath = [x.replace("{text}", v) for x in SELECTORS["variant"]]
+            self._click_smart(xpath, f"ตัวเลือก: {v}")
+
     def start_sale_process(self):
-        print(f"\n🚀 Step 2: ไปยังหน้าสินค้า: {self.url}")
+        print(f"\n🚀 Step 2: หน้าสินค้า: {self.url}")
         self.driver.get(self.url)
         
         if self.fs_time:
@@ -154,67 +152,61 @@ class ShopeeUltimateBot:
             if target_dt < datetime.now(): target_dt += timedelta(days=1)
             
             print(f"🕒 รอเวลา Flash Sale: {self.fs_time}...")
-            
-            # Phase 1: Waiting
-            while (target_dt - datetime.now()).total_seconds() > 10:
-                print(f"⏳ เหลือเวลา {(target_dt - datetime.now()).total_seconds():.0f} วินาที...", end="\r")
+            while (target_dt - datetime.now()).total_seconds() > 5:
                 time.sleep(1)
             
-            # Phase 2: Polling (รัวปุ่ม)
-            print("\n🔥 เข้าสู่ช่วงรัวปุ่ม (Precision Polling)...")
-            
-            # เลือก Variant ล่วงหน้า (ถ้าปุ่มโชว์แล้ว)
+            # เลือก Variant ก่อนเริ่มรัว (ป้องกัน Toggle Off)
+            print("\n🎨 กำลังเลือกตัวเลือกสินค้าล่วงหน้า...")
             self._select_variants()
             
-            # รอจนถึงวินาทีที่ 0.05 ก่อนเริ่มรัว (เพื่อความแม่นยำ)
-            while datetime.now() < target_dt - timedelta(milliseconds=50):
+            print("🔥 เข้าสู่ช่วงรัวปุ่ม (Precision Polling)...")
+            while datetime.now() < target_dt:
                 time.sleep(0.001)
 
-            # รัวจนกว่าจะสำเร็จ (Max 15 วิ)
             start_time = time.time()
-            while time.time() - start_time < 15:
-                self._check_captcha()
+            while time.time() - start_time < 20: # เพิ่มเป็น 20 วิ
+                # เช็ค Captcha และหยุดรอถ้าเจอ
+                for xpath in SELECTORS["captcha"]:
+                    try:
+                        if self.driver.find_element(By.XPATH, xpath).is_displayed():
+                            self._wait_until_captcha_gone()
+                    except Exception: pass
+
                 if self._click_smart(SELECTORS["buy_now"], "Buy Now"):
-                    break
-                # ถ้ายังเลือก variant ไม่ครบ ให้ลองเลือกซ้ำ (กรณีหน้าโหลดไม่ทัน)
-                self._select_variants()
-                time.sleep(0.01) # กันเครื่องค้าง
+                    return True
+                time.sleep(0.01)
         else:
             self._select_variants()
-            self._click_smart(SELECTORS["buy_now"], "Buy Now")
-
-    def _select_variants(self):
-        for v in self.variants:
-            xpath = [x.replace("{text}", v) for x in SELECTORS["variant"]]
-            self._click_smart(xpath, f"ตัวเลือก: {v}")
+            return self._click_smart(SELECTORS["buy_now"], "Buy Now")
+        return False
 
     def finish(self):
-        print("\n💳 Step 3: ตรวจสอบหน้า Checkout")
+        print("\n💳 Step 3: หน้า Checkout")
         try:
             WebDriverWait(self.driver, 15).until(EC.url_contains("checkout"))
             alert_beep(3)
-            print("="*50)
-            print("🎉 มาถึงหน้าชำระเงินแล้ว! กรุณาตรวจสอบและกดสั่งซื้อด้วยตัวเอง")
-            print("="*50)
-        except:
-            print("⚠️ ไม่เข้าหน้า Checkout อัตโนมัติ กรุณาตรวจสอบหน้าจอ")
+            print("🎉 มาถึงหน้าชำระเงินแล้ว! กรุณากดสั่งซื้อด้วยตัวเอง")
+        except Exception:
+            print("⚠️ ไม่เข้าหน้า Checkout อัตโนมัติ กรุณาตรวจสอบ")
 
     def run(self):
         try:
             self.login()
-            self.start_sale_process()
-            self.finish()
+            if self.start_sale_process():
+                self.finish()
+            else:
+                print("❌ กดซื้อไม่สำเร็จ")
         except KeyboardInterrupt:
-            print("\n🛑 หยุดทำงานโดยผู้ใช้")
+            print("\n🛑 หยุดโดยผู้ใช้")
         finally:
-            print("\nโปรแกรมเสร็จสิ้น ปล่อยเบราว์เซอร์ไว้ให้คุณดำเนินการต่อ...")
+            print("\nโปรแกรมเสร็จสิ้น...")
 
 if __name__ == "__main__":
-    print("✨ Shopee Flash Sale Bot - Ultimate Edition ✨")
+    print("✨ Shopee Flash Sale Bot - v3 Final ✨")
     p_url = input("🔗 ลิงก์สินค้า: ").strip()
     v_str = input("🎨 ตัวเลือก (เช่น สีดำ,256GB) ถ้าไม่มีให้ Enter: ").strip()
     p_variants = [v.strip() for v in v_str.split(",")] if v_str else []
     p_time = input("⏰ เวลา Flash Sale (HH:MM:SS): ").strip()
 
-    bot = ShopeeUltimateBot(p_url, p_variants, p_time)
+    bot = ShopeeFinalBot(p_url, p_variants, p_time)
     bot.run()
